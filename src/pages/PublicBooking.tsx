@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Calendar, Clock, User, Mail, MessageSquare, ArrowLeft, ArrowRight, Check } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -8,6 +8,7 @@ import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { Badge } from '../components/ui/badge'
 import { useToast } from '../hooks/use-toast'
+import { publicBlink } from '../blink/client'
 
 export default function PublicBooking() {
   const { userId } = useParams()
@@ -21,13 +22,37 @@ export default function PublicBooking() {
     email: '',
     message: ''
   })
+  const [calendarOwner, setCalendarOwner] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Mock calendar owner data
-  const calendarOwner = {
-    name: 'John Smith',
-    email: 'john@example.com',
-    meetingDuration: 30
-  }
+  // Load calendar owner information
+  useEffect(() => {
+    const loadOwnerInfo = async () => {
+      try {
+        // For now, we'll use mock data since we need to implement user profiles
+        // In a real app, you'd fetch this from the database using the userId
+        setCalendarOwner({
+          id: userId,
+          name: 'John Smith',
+          email: 'john@example.com',
+          meetingDuration: 30
+        })
+      } catch (error) {
+        console.error('Failed to load owner info:', error)
+        toast({
+          title: "Error",
+          description: "Failed to load calendar information.",
+          variant: "destructive"
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (userId) {
+      loadOwnerInfo()
+    }
+  }, [userId, toast])
 
   // Generate available dates (next 30 days, excluding weekends for demo)
   const getAvailableDates = () => {
@@ -89,13 +114,38 @@ export default function PublicBooking() {
 
   const handleBookAppointment = async () => {
     try {
-      // Here we would save the appointment to the database
+      if (!selectedDate || !selectedTime || !calendarOwner) return
+
+      // Create the appointment date/time
+      const [hours, minutes] = selectedTime.split(':')
+      const appointmentDateTime = new Date(selectedDate)
+      appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+
+      // Create appointment object
+      const appointment = {
+        id: `apt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        calendarOwnerId: calendarOwner.id,
+        guestName: guestDetails.name,
+        guestEmail: guestDetails.email,
+        guestMessage: guestDetails.message || null,
+        appointmentDate: appointmentDateTime.toISOString(),
+        duration: calendarOwner.meetingDuration,
+        status: 'confirmed',
+        createdAt: new Date().toISOString()
+      }
+
+      // For now, save to localStorage (in production, this would go to database)
+      const existingAppointments = JSON.parse(localStorage.getItem('appointments') || '[]')
+      existingAppointments.push(appointment)
+      localStorage.setItem('appointments', JSON.stringify(existingAppointments))
+
       setStep('confirmation')
       toast({
         title: "Appointment booked!",
         description: "You'll receive a confirmation email shortly.",
       })
     } catch (error) {
+      console.error('Failed to book appointment:', error)
       toast({
         title: "Error",
         description: "Failed to book appointment. Please try again.",
@@ -120,6 +170,30 @@ export default function PublicBooking() {
       minute: '2-digit',
       hour12: true
     })
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading calendar...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!calendarOwner) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <h1 className="text-2xl font-bold text-foreground mb-4">Calendar Not Found</h1>
+          <p className="text-muted-foreground mb-6">
+            The calendar you're looking for doesn't exist or is no longer available.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
